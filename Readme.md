@@ -43,6 +43,17 @@ $provider = new \Geocoder\Provider\Here\Here($httpClient, 'app-id', 'app-code');
 $result = $geocoder->geocodeQuery(GeocodeQuery::create('Buckingham Palace, London'));
 ```
 
+### Geocoder-Laravel (additional)
+If you use geocoder-laravel, add these lines in the same arguments sequence into 'providers' class:
+```
+        Here::class => [
+            env('HERE_MAPS_APP_ID', ''),    // appid
+            env('HERE_MAPS_APP_CODE', ''),  // appcode
+            false,  // CIT - Customer Integration Testing
+            env('HERE_MAPS_API_KEY', ''),   //config('map_api_key_server'),
+        ],
+```
+
 ### Language parameter
 
 Define the preferred language of address elements in the result. Without a preferred language, the Here geocoder will return results in an official country language or in a regional primary language so that local people will understand. Language code must be provided according to RFC 4647 standard.

@@ -35,6 +35,11 @@ final class HereAddress extends Address
     private $locationName;
 
     /**
+     * @var string|null
+     */
+    private $formattedAddress;
+
+    /**
      * @var array<string, mixed>|null
      */
     private $additionalData;
@@ -48,6 +53,14 @@ final class HereAddress extends Address
      * @return string|null
      */
     public function getLocationId()
+    {
+        return $this->locationId;
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getId()
     {
         return $this->locationId;
     }
@@ -68,6 +81,11 @@ final class HereAddress extends Address
         return $this->locationType;
     }
 
+    /**
+     * @param string|null $locationType
+     *
+     * @return HereAddress
+     */
     public function withLocationType(?string $locationType = null): self
     {
         $new = clone $this;
@@ -91,6 +109,28 @@ final class HereAddress extends Address
 
         return $new;
     }
+
+    /**
+     * @return string|null
+     */
+    public function getFormattedAddress()
+    {
+        return $this->formattedAddress;
+    }
+
+    /**
+     * @param string|null $formattedAddress
+     *
+     * @return HereAddress
+     */
+    public function withFormattedAddress(string $formattedAddress = null): self
+    {
+        $new = clone $this;
+        $new->formattedAddress = $formattedAddress;
+
+        return $new;
+    }
+
 
     /**
      * @return array<string, mixed>|null

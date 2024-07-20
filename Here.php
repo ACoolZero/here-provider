@@ -35,7 +35,7 @@ final class Here extends AbstractHttpProvider implements Provider
     /**
      * @var string
      */
-    public const GEOCODE_ENDPOINT_URL_API_KEY = 'https://geocoder.ls.hereapi.com/6.2/geocode.json';
+    public const GEOCODE_ENDPOINT_URL_API_KEY = 'https://geocode.search.hereapi.com/v1/geocode'; // New v7 API
 
     /**
      * @var string
@@ -55,7 +55,7 @@ final class Here extends AbstractHttpProvider implements Provider
     /**
      * @var string
      */
-    public const REVERSE_ENDPOINT_URL_API_KEY = 'https://reverse.geocoder.ls.hereapi.com/6.2/reversegeocode.json';
+    public const REVERSE_ENDPOINT_URL_API_KEY = 'https://revgeocode.search.hereapi.com/v1/revgeocode';  // New v7 API
 
     /**
      * @var string
@@ -121,12 +121,12 @@ final class Here extends AbstractHttpProvider implements Provider
      * @param string          $appCode an App code
      * @param bool            $useCIT  use Customer Integration Testing environment (CIT) instead of production
      */
-    public function __construct(ClientInterface $client, ?string $appId = null, ?string $appCode = null, bool $useCIT = false)
+    public function __construct(ClientInterface $client, ?string $appId = null, ?string $appCode = null, bool $useCIT = false, ?string $apiKey = null)  // Added $apiKey to use directly in construct function
     {
         $this->appId = $appId;
         $this->appCode = $appCode;
         $this->useCIT = $useCIT;
-
+        $this->apiKey = $apiKey; // TODO: temporary add apiKey to constructor. Refer to config/geocoder.php
         parent::__construct($client);
     }
 
@@ -146,9 +146,9 @@ final class Here extends AbstractHttpProvider implements Provider
         }
 
         $queryParams = $this->withApiCredentials([
-            'searchtext' => $query->getText(),
-            'gen' => 9,
-            'additionaldata' => $this->getAdditionalDataParam($query),
+            'q' => $query->getText(),
+            // 'qq' => $query->getText(), // A qualified query is similar to a free-text query, but in a structured manner. 
+            'lang' => $query->getLocale(),
         ]);
 
         if (null !== $query->getData('country')) {
@@ -179,10 +179,9 @@ final class Here extends AbstractHttpProvider implements Provider
         $coordinates = $query->getCoordinates();
 
         $queryParams = $this->withApiCredentials([
-            'gen' => 9,
-            'mode' => 'retrieveAddresses',
-            'prox' => sprintf('%s,%s', $coordinates->getLatitude(), $coordinates->getLongitude()),
-            'maxresults' => $query->getLimit(),
+            'at' => sprintf('%s,%s', $coordinates->getLatitude(), $coordinates->getLongitude()),
+            'limit' => $query->getLimit(),
+            'lang' => $query->getLocale(),
         ]);
 
         return $this->executeQuery(sprintf('%s?%s', $this->getBaseUrl($query), http_build_query($queryParams)), $query->getLimit());
@@ -205,48 +204,74 @@ final class Here extends AbstractHttpProvider implements Provider
             }
         }
 
-        if (!isset($json['Response']) || empty($json['Response'])) {
+        if (!isset($json['items']) || empty($json['items'])) {
             return new AddressCollection([]);
         }
 
-        if (!isset($json['Response']['View'][0])) {
-            return new AddressCollection([]);
-        }
+        // if (!isset($json['Response']['View'][0])) { // TODO: Reclaim the need or remove it
+        //     Log::channel('stderr')->debug('debug 2');
+        //     return new AddressCollection([]);
+        // }
 
-        $locations = $json['Response']['View'][0]['Result'];
+        // $locations = $json['Response']['View'][0]['Result'];
+        $locations = $json['items'];
 
         $results = [];
 
         foreach ($locations as $loc) {
-            $location = $loc['Location'];
+            // $location = $loc['Location'];
             $builder = new AddressBuilder($this->getName());
-            $coordinates = isset($location['NavigationPosition'][0]) ? $location['NavigationPosition'][0] : $location['DisplayPosition'];
-            $builder->setCoordinates($coordinates['Latitude'], $coordinates['Longitude']);
-            $bounds = $location['MapView'];
+            // $coordinates = isset($location['NavigationPosition'][0]) ? $location['NavigationPosition'][0] : $location['DisplayPosition'];
+            // $builder->setCoordinates($coordinates['Latitude'], $coordinates['Longitude']);
 
-            $builder->setBounds($bounds['BottomRight']['Latitude'], $bounds['TopLeft']['Longitude'], $bounds['TopLeft']['Latitude'], $bounds['BottomRight']['Longitude']);
-            $builder->setStreetNumber($location['Address']['HouseNumber'] ?? null);
-            $builder->setStreetName($location['Address']['Street'] ?? null);
-            $builder->setPostalCode($location['Address']['PostalCode'] ?? null);
-            $builder->setLocality($location['Address']['City'] ?? null);
-            $builder->setSubLocality($location['Address']['District'] ?? null);
-            $builder->setCountryCode($location['Address']['Country'] ?? null);
 
-            // The name of the country can be found in the AdditionalData.
-            $additionalData = $location['Address']['AdditionalData'] ?? null;
-            if (!empty($additionalData)) {
-                $builder->setCountry($additionalData[array_search('CountryName', array_column($additionalData, 'key'))]['value'] ?? null);
-            }
+            $coordinates = $loc['position'];
+            $builder->setCoordinates($coordinates['lat'], $coordinates['lng']);
 
-            // There may be a second AdditionalData. For example if "IncludeRoutingInformation" parameter is added
-            $extraAdditionalData = $loc['AdditionalData'] ?? [];
+            // $bounds = $location['MapView'];
+            // $builder->setBounds($bounds['BottomRight']['Latitude'], $bounds['TopLeft']['Longitude'], $bounds['TopLeft']['Latitude'], $bounds['BottomRight']['Longitude']);
+
+            // $builder->setStreetNumber($location['Address']['HouseNumber'] ?? null);
+            // $builder->setStreetName($location['Address']['Street'] ?? null);
+            // $builder->setPostalCode($location['Address']['PostalCode'] ?? null);
+            // $builder->setLocality($location['Address']['City'] ?? null);
+            // $builder->setSubLocality($location['Address']['District'] ?? null);
+            // $builder->setCountryCode($location['Address']['Country'] ?? null);
+
+            $res_address = $loc['address'];
+            $builder->setStreetNumber($res_address['houseNumber'] ?? null);
+            $builder->setStreetName($res_address['street'] ?? null);
+            $builder->setPostalCode($res_address['postalCode'] ?? null);
+            $builder->setLocality($res_address['city'] ?? null);
+            $builder->setSubLocality($res_address['district'] ?? null);
+            $builder->setCountryCode($res_address['countryCode'] ?? null);
+            $builder->setCountry($res_address['countryName'] ?? null);
+
+            // // The name of the country can be found in the AdditionalData.
+            // $additionalData = $location['Address']['AdditionalData'] ?? null;
+            // if (!empty($additionalData)) {
+            //     $builder->setCountry($additionalData[array_search('CountryName', array_column($additionalData, 'key'))]['value'] ?? null);
+            // }
+
+            // // There may be a second AdditionalData. For example if "IncludeRoutingInformation" parameter is added
+            // $extraAdditionalData = $loc['AdditionalData'] ?? [];
 
             /** @var HereAddress $address */
             $address = $builder->build(HereAddress::class);
-            $address = $address->withLocationId($location['LocationId'] ?? null);
-            $address = $address->withLocationType($location['LocationType']);
-            $address = $address->withAdditionalData(array_merge($additionalData, $extraAdditionalData));
-            $address = $address->withShape($location['Shape'] ?? null);
+            // $address = $address->withLocationId($location['LocationId'] ?? null);
+            // $address = $address->withLocationType($location['LocationType']);
+            // $address = $address->withAdditionalData(array_merge($additionalData, $extraAdditionalData));
+            // $address = $address->withShape($location['Shape'] ?? null);
+
+            $address = $address->withLocationId($loc['id'] ?? null);
+            $address = $address->withLocationType($loc['resultType'] ?? null);
+            $address = $address->withFormattedAddress($res_address['label'] ?? null);   // copied method from GoogleMaps provider.
+
+        
+            // // Here API does not seem to provide 'AdditionalData' and 'Shape' in the new format, so these steps are skipped
+            // $address = $address->withAdditionalData([]);
+            // $address = $address->withShape(null);
+
             $results[] = $address;
 
             if (count($results) >= $limit) {
